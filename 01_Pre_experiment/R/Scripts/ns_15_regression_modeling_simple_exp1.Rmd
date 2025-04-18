@@ -1,0 +1,43 @@
+---
+title: "Pre-experiment simple regression modeling"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=1200)
+fig_text_sz <- 14
+
+# create results folder if it doesn't exist
+resFolder <- paste0("../Results/results",format(Sys.time(),'_%Y%m%d'))
+if (!dir.exists(file.path(resFolder))) {dir.create(file.path(resFolder), recursive=T)}
+
+# load packages
+pacman::p_load(report)
+```
+
+```{r data}
+# Note that pre-experiment: exp1 and main experiment: exp2 in naming
+df <- read.csv("../Data/df_regression_simple_exp1.csv",header=FALSE)
+```
+
+```{r modeling}
+# primary category
+mod1 <- lm(V1~V2,df)
+summary(mod1)
+report_effectsize(mod1)
+mod1.aov <- anova(mod1)
+(SSR <- mod1.aov$`Sum Sq`[1])
+(SSE <- mod1.aov$`Sum Sq`[2])
+(mod1.eta2 <- SSR / (SSR + SSE))
+
+# subcategory
+mod2 <- lm(V1~V3,df)
+summary(mod2)
+report_effectsize(mod2)
+mod2.aov <- anova(mod2)
+(SSR <- mod2.aov$`Sum Sq`[1])
+(SSE <- mod2.aov$`Sum Sq`[2])
+(mod2.eta2 <- SSR / (SSR + SSE))
+```

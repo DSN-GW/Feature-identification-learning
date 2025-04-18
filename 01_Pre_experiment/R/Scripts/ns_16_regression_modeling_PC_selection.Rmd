@@ -1,0 +1,91 @@
+---
+title: "Pre-experiment PC selection"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=1200)
+fig_text_sz <- 14
+
+# create results folder if it doesn't exist
+resFolder <- paste0("../Results/results",format(Sys.time(),'_%Y%m%d'))
+if (!dir.exists(file.path(resFolder))) {dir.create(file.path(resFolder), recursive=T)}
+
+# load packages
+pacman::p_load(report, aod)
+```
+
+```{r data}
+# Note that pre-experiment: exp1 and main experiment: exp2 in naming
+df <- read.csv("../Data/df_regression_exp1.csv",header=F)
+```
+
+```{r}
+#select which category level: 1 = primary cat, 2 = sub cat
+category <- 1        
+
+#initialize vars
+mod   <- list()  
+betas <- rep(0,120) 
+rsqrd <- rep(0,120)
+adjrs <- rep(0,120)
+pvals <- rep(1,120)  # p values initialized to 1
+
+# predicting reconstruction from category info
+for (i_tem in 3:(length(df)-3)) {
+  mod[[i_tem]] <- lm(df[,category]~df[,i_tem])      
+  betas[i_tem] <- mod[[i_tem]]$coefficients[2]                   #saves the coefficient
+  rsqrd[i_tem] <- summary(mod[[i_tem]])$r.squared                #saves the R^2
+  adjrs[i_tem] <- summary(mod[[i_tem]])$adj.r.squared            #saves the adjusted R^2
+  pvals[i_tem] <- summary(mod[[i_tem]])$coefficients[2,4]        #saves coefficient p value
+}
+out <- data.frame(betas,rsqrd,adjrs,pvals) #combine into data frame
+```
+
+```{r}
+
+# convert to factor
+df$V3fac <- factor(df$V3)
+
+# predict category from reconstruction 1
+mod_log <- glm(V1~V3,family=binomial,df)
+summary(mod_log)
+effectsize::standardize_parameters(mod_log, exp = TRUE)
+
+# check intercept
+mod_log2a <- glm(V1~1,family=binomial,df)
+summary(mod_log2a)
+
+# predict category from reconstruction 2
+mod_log2 <- glm(V1~V4,family=binomial,df)
+summary(mod_log2)
+effectsize::standardize_parameters(mod_log2, exp = TRUE)
+
+# compare models
+anova(mod_log2a,mod_log2)
+
+# wald test
+wald.test(b = coef(mod_log2), Sigma = vcov(mod_log2), Terms = 1:2)
+1-logLik(mod_log2)/logLik(mod_log2a)
+
+# predict subcategory from reconstruction 1
+mod_log3 <- glm(V2~V3,family=binomial,df)
+summary(mod_log3)
+effectsize::standardize_parameters(mod_log3, exp = TRUE)
+
+# check intercept
+mod_log4a <- glm(V2~1,family=binomial,df)
+summary(mod_log4a)
+
+# predict subcategory from reconstruction 2
+mod_log4 <- glm(V2~V4,family=binomial,df)
+summary(mod_log4)
+effectsize::standardize_parameters(mod_log4, exp = TRUE)
+
+# wald test
+wald.test(b = coef(mod_log4), Sigma = vcov(mod_log4), Terms = 1:2)
+1-logLik(mod_log4)/logLik(mod_log4a)
+```
+

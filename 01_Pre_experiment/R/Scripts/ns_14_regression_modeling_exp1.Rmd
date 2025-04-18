@@ -1,0 +1,184 @@
+---
+title: "Pre-experiment stepwise regression modeling"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=1200)
+fig_text_sz <- 14
+
+# create results folder if it doesn't exist
+resFolder <- paste0("../Results/results",format(Sys.time(),'_%Y%m%d'))
+if (!dir.exists(file.path(resFolder))) {dir.create(file.path(resFolder), recursive=T)}
+
+# load packages
+# install.packages("pacman")
+library("pacman")
+pacman::p_load(report, ggplot2, gridExtra, AICcmodavg, cowplot)
+
+```
+
+```{r data}
+# Note that pre-experiment: exp1 and main experiment: exp2 in naming
+# read in data
+# note: columns 1 and 2 are cat1 and cat2, columns 3:122 are reconstructions 1 through 120
+df <- read.csv('../Data/df_regression_exp1.csv')
+```
+
+```{r first_loop}
+# select which category level: 1 = primary cat, 2 = sub cat
+category <- 1        
+
+# initialize vars
+mod <- list(lm(df[,3]~as.factor(df[,1]))) 
+betas <- rep(0,120)  
+rsqrd <- rep(0,120)
+adjrs <- rep(0,120)
+pvals <- rep(1,120)  # p values initialized to 1
+for (i_tem in 1:(length(df)-2)) {
+  mod[[i_tem]] <- lm(df[,i_tem+2]~as.factor(df[,category]))      # predicting reconstruction from category info
+  betas[i_tem] <- mod[[i_tem]]$coefficients[2]                   # saves the coefficient
+  rsqrd[i_tem] <- summary(mod[[i_tem]])$r.squared                # saves the R^2
+  adjrs[i_tem] <- summary(mod[[i_tem]])$adj.r.squared            # saves the adjusted R^2
+  pvals[i_tem] <- summary(mod[[i_tem]])$coefficients[2,4]        # saves coefficient p value
+}
+out <- data.frame(betas,rsqrd,adjrs,pvals) # combine into data frame
+aic_results <- aictab(cand.set = mod)
+```
+
+```{r plotting_initial, fig.align='center'}
+xints      <- c(9,12)
+plt_titles <- c('Reg. coeffs & var. explained (primary category)',
+                'Reg. coeffs & var. explained (sub category)')
+
+# regression coefficients
+p1 <- ggplot(out,aes(x=1:120,y=betas)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints[category],col='red') +
+  ylab(expression(beta)) +
+  xlim(c(0,121)) +
+  ggtitle(plt_titles[category]) +
+  theme(text=element_text(size=fig_text_sz),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+# variance explained
+p2 <- ggplot(out,aes(x=1:120,y=rsqrd)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints[category],col='red') +
+  ylab(expression(R^2)) +
+  xlim(c(0,121)) +
+  xlab('num components in reconstruction') +
+  theme(text=element_text(size=fig_text_sz),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+# aic
+p3 <- ggplot(aic_results,aes(x=1:120,y=(sort(AICc,decreasing = TRUE))/1000)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints[category],col='red') +
+  ylab('AIC') +
+  xlim(c(0,121)) +
+  xlab('Number of components in reconstruction') +
+  theme(text=element_text(size=fig_text_sz)) +
+  scale_y_continuous(labels = scales::label_dollar(suffix = "k", prefix = ""))
+ 
+plot_grid(p1,p2,p3,ncol=1,align = "v")
+```
+
+```{r stepwise_modeling}
+# select which category level: 1 = primary cat, 2 = sub cat
+category2 <- 1
+
+# initializing variables
+betas2 <- rep(0,120)
+rsqrd2 <- rep(0,120)
+adjrs2 <- rep(0,120)
+pvals2 <- rep(1,120)  # p values initialized to 1
+mod2   <- vector(mode = "list", length = 120)
+
+# run base model and store in mod2
+catName <- colnames(df[category2])
+yname   <- colnames(df[3])
+newdf   <- dplyr::rename(df, DV = yname)
+yname   <- colnames(newdf[3])
+xnames  <-colnames(newdf[category2])
+xnames  <-xnames[-which(xnames==yname)]
+
+# with category information
+formula <-as.formula(paste(yname,"~",paste(xnames,collapse="+"),catName))  
+mod2[[1]]<-lm(formula,data=newdf)
+
+# save base model info
+betas2[1] <- mod2[[1]]$coefficients[2]                   #saves the coefficient
+rsqrd2[1] <- summary(mod2[[1]])$r.squared                #saves the R^2
+adjrs2[1] <- summary(mod2[[1]])$adj.r.squared            #saves the adjusted R^2
+pvals2[1] <- summary(mod2[[1]])$coefficients[2,4]        #saves coefficient p value
+
+# stepwise
+for (i_tem in 2:(length(df)-2)) {
+  catName <- colnames(df[category2])
+  yname   <- colnames(df[i_tem+2])
+  newdf   <- dplyr::rename(df, DV = yname)
+  yname   <- colnames(newdf[i_tem+2])
+  xnames  <- colnames(newdf[3:(i_tem+2)])
+  xnames  <- xnames[-which(xnames==yname)]
+  
+  # with category information
+  formula <-as.formula(paste(yname,"~",paste(xnames,collapse="+"),"+",catName))  
+  
+  # save model info
+  mod2[[i_tem]]<-lm(formula,data=newdf)
+  betas2[i_tem] <- mod2[[i_tem]]$coefficients[2]                   #saves the coefficient
+  rsqrd2[i_tem] <- summary(mod2[[i_tem]])$r.squared                #saves the R^2
+  adjrs2[i_tem] <- summary(mod2[[i_tem]])$adj.r.squared            #saves the adjusted R^2
+  pvals2[i_tem] <- summary(mod2[[i_tem]])$coefficients[2,4]        #saves coefficient p value
+}
+out2 <- data.frame(betas2,rsqrd2,adjrs2,pvals2) #combine into data frame
+```
+
+```{r plotting_stepwise, fig.align='center'}
+## visualize
+xints2 <- c(3,3)
+p4 <- ggplot(out2,aes(x=1:120,y=betas2)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints2[category],col='red') +
+  ylab(expression(beta)) +
+  xlim(c(0,121)) +
+  ggtitle(plt_titles[category2]) +
+  theme(text=element_text(size=fig_text_sz),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+p5 <- ggplot(out2,aes(x=1:120,y=rsqrd2)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints2[category],col='red') +
+  ylab(expression(R^2)) +
+  xlim(c(0,121)) +
+  xlab('num components in reconstruction') +
+  theme(text=element_text(size=fig_text_sz),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+comparisons <- do.call(anova,mod2)
+p6 <- ggplot(comparisons,aes(x=1:120,y=F)) +
+  geom_bar(stat='identity',col=I("white")) +
+  geom_vline(xintercept=xints2[category],col='red') +
+  ylab('F') +
+  xlim(c(0,121)) +
+  xlab('Number of components in reconstruction') +
+  theme(text=element_text(size=fig_text_sz))
+
+plot_grid(p4,p5,p6,ncol=1,align = "v")
+```
+
